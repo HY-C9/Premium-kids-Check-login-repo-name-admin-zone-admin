@@ -95,8 +95,8 @@
                 <input id="newOwner" type="text" placeholder="ชื่อผู้รับ" class="p-3.5 rounded-xl border border-white outline-none focus:ring-2 focus:ring-amber-300 text-[15px] shadow-sm bg-white/90">
                 <input id="newAddr" type="text" placeholder="ที่อยู่จัดส่ง" class="p-3.5 rounded-xl border border-white outline-none focus:ring-2 focus:ring-amber-300 text-[15px] shadow-sm bg-white/90 lg:col-span-2">
                 <select id="newStatus" class="p-3.5 rounded-xl border border-white outline-none font-bold text-amber-700 text-[15px] shadow-sm bg-white/90">
-                    <option value="pass">✅ ผ่าน</option>
-                    <option value="fail">❌ ไม่ผ่าน</option>
+                    <option value="ผ่าน">✅ ผ่าน</option>
+                    <option value="ไม่ผ่าน">❌ ไม่ผ่าน</option>
                 </select>
                 <button id="addBtn" onclick="addShop()" class="lg:col-span-5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-[0.98]">บันทึกข้อมูลออนไลน์ ☁️</button>
             </div>
@@ -123,7 +123,23 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, doc, addDoc, deleteDoc, updateDoc, onSnapshot, serverTimestamp, orderBy, query } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD9SnhLqRijMJIsNpStmsPSWrXsiFxn-gs",
+            authDomain: "mombaby-check.firebaseapp.com",
+            projectId: "mombaby-check",
+            storageBucket: "mombaby-check.firebasestorage.app",
+            messagingSenderId: "948432082279",
+            appId: "1:948432082279:web:61b1dfd215c02582f6cbc2",
+            measurementId: "G-MX9SD1GC7P"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
         // --- 🌊 ระบบ Water Canvas Animation ---
         const canvas = document.getElementById('water-canvas');
         const ctx = canvas.getContext('2d');
@@ -169,14 +185,11 @@
             requestAnimationFrame(animateWater);
         }
         animateWater();
-        // ----------------------------------------
 
-        // เปลี่ยนเป็น API ของคุณที่ Deploy ใหม่แล้ว
-        const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbxun4zYaMJfijpqhGQxc6xDZS2_6HSZ2hWoVY7wVD-qwSd_pbdtdsvrYOKXugXh0GN4/exec";
-        let db = [];
+        let globalDb = [];
 
-        // --- Auth System (ระบบล็อกอินจำสถานะ 5 วัน) ---
-        function checkAdminSession() {
+        // --- Auth System ---
+        window.checkAdminSession = function() {
             const expiry = localStorage.getItem('premiumKidsAdminSession');
             if (expiry && Date.now() < parseInt(expiry, 10)) {
                 return true;
@@ -185,18 +198,18 @@
             return false;
         }
 
-        function initApp() {
-            if (checkAdminSession()) {
+        window.initApp = function() {
+            if (window.checkAdminSession()) {
                 document.getElementById('adminLoginOverlay').classList.replace('flex', 'hidden');
                 document.getElementById('admin-page').classList.replace('hidden', 'flex');
-                loadData();
+                startRealtimeListener();
             } else {
                 document.getElementById('adminLoginOverlay').classList.replace('hidden', 'flex');
                 document.getElementById('admin-page').classList.replace('flex', 'hidden');
             }
         }
 
-        function verifyAdmin() {
+        window.verifyAdmin = function() {
             const user = document.getElementById('adminUserInput').value.trim();
             const pass = document.getElementById('adminPassInput').value;
             
@@ -206,13 +219,13 @@
 
                 document.getElementById('adminLoginOverlay').classList.replace('flex', 'hidden');
                 document.getElementById('admin-page').classList.replace('hidden', 'flex');
-                loadData();
+                startRealtimeListener();
             } else { 
                 alert("ชื่อผู้ใช้ หรือ รหัสผ่านไม่ถูกต้อง!");
             }
         }
 
-        function logoutAdmin() {
+        window.logoutAdmin = function() {
             if(confirm("ต้องการออกจากระบบใช่หรือไม่?")) {
                 localStorage.removeItem('premiumKidsAdminSession');
                 document.getElementById('admin-page').classList.replace('flex', 'hidden');
@@ -222,60 +235,77 @@
             }
         }
 
-        initApp(); 
+        window.initApp(); 
 
         // --- Data System ---
-        async function loadData() {
+        function startRealtimeListener() {
             document.getElementById('loading').classList.remove('hidden');
-            try {
-                const response = await fetch(SHEET_API_URL);
-                const data = await response.json();
-                if(Array.isArray(data)) { db = data; render(); }
-            } catch (e) { console.error("Load Error:", e); }
-            document.getElementById('loading').classList.add('hidden');
+            
+            const q = query(collection(db, "address_mom_baby"), orderBy("timestamp", "desc"));
+            onSnapshot(q, (snapshot) => {
+                globalDb = [];
+                snapshot.forEach((doc) => {
+                    globalDb.push({ id: doc.id, ...doc.data() });
+                });
+                window.render();
+                document.getElementById('loading').classList.add('hidden');
+            }, (error) => {
+                console.error("Firebase Read Error:", error);
+                document.getElementById('loading').classList.add('hidden');
+                
+                onSnapshot(collection(db, "address_mom_baby"), (snapshotFallback) => {
+                    globalDb = [];
+                    snapshotFallback.forEach((doc) => {
+                        globalDb.push({ id: doc.id, ...doc.data() });
+                    });
+                    window.render();
+                });
+            });
         }
 
-        // 🟢 แก้ไขเรื่องการค้าง: สร้างเป็นก้อน HTML แล้วอัปเดตทีเดียว
-        function render() {
+        window.render = function() {
             const tbody = document.getElementById('shopTable');
             const searchVal = document.getElementById('adminSearchInput').value.toLowerCase();
             if (!tbody) return;
             
-            const filtered = db.filter(s => 
-                String(s.name).toLowerCase().includes(searchVal) || 
-                String(s.owner).toLowerCase().includes(searchVal)
+            const filtered = globalDb.filter(s => 
+                (s.Name && String(s.Name).toLowerCase().includes(searchVal)) || 
+                (s.Owner && String(s.Owner).toLowerCase().includes(searchVal))
             );
 
             let htmlString = ""; 
             filtered.forEach((s) => {
+                const sStatus = s.Status || 'รอตรวจสอบ';
+                const statusClass = (sStatus === 'ผ่าน' || sStatus === 'pass') ? 'pass' : 'fail';
+
                 const statusSelect = `
-                    <select onchange="updateStatus('${s.name}', this.value)" class="select-status ${s.status === 'pass' ? 'pass' : 'fail'} bg-white/90">
-                        <option value="pass" ${s.status === 'pass' ? 'selected' : ''}>✅ ผ่าน</option>
-                        <option value="fail" ${s.status === 'fail' ? 'selected' : ''}>❌ ไม่ผ่าน</option>
+                    <select onchange="updateStatus('${s.id}', this.value)" class="select-status ${statusClass} bg-white/90">
+                        <option value="ผ่าน" ${(sStatus === 'ผ่าน' || sStatus === 'pass') ? 'selected' : ''}>✅ ผ่าน</option>
+                        <option value="ไม่ผ่าน" ${(sStatus === 'ไม่ผ่าน' || sStatus === 'fail') ? 'selected' : ''}>❌ ไม่ผ่าน</option>
                     </select>
                 `;
 
                 htmlString += `<tr class="border-b border-amber-100/40 text-sm hover:bg-white/50 transition-colors">
-                    <td class="p-4"><input type="checkbox" class="shop-check w-4 h-4 accent-amber-500" value="${s.name}" onchange="updateBulkUI()"></td>
-                    <td class="p-4 font-bold text-amber-700">${s.name}</td>
-                    <td class="p-4 text-slate-700">${s.owner}</td>
+                    <td class="p-4"><input type="checkbox" class="shop-check w-4 h-4 accent-amber-500" value="${s.id}" onchange="updateBulkUI()"></td>
+                    <td class="p-4 font-bold text-amber-700">${s.Name || '-'}</td>
+                    <td class="p-4 text-slate-700">${s.Owner || '-'}</td>
                     <td class="p-4">${statusSelect}</td>
                     <td class="p-4 text-center">
-                        <button onclick="deleteShop('${s.name}')" class="text-red-500 font-bold p-2 hover:bg-red-50 hover:scale-110 rounded-lg transition-all">🗑️ ลบ</button>
+                        <button onclick="deleteShop('${s.id}', '${s.Name}')" class="text-red-500 font-bold p-2 hover:bg-red-50 hover:scale-110 rounded-lg transition-all">🗑️ ลบ</button>
                     </td>
                 </tr>`;
             });
             
             tbody.innerHTML = htmlString; 
-            updateBulkUI();
+            window.updateBulkUI();
         }
 
-        function toggleAll(master) {
+        window.toggleAll = function(master) {
             document.querySelectorAll('.shop-check').forEach(ck => ck.checked = master.checked);
-            updateBulkUI();
+            window.updateBulkUI();
         }
 
-        function updateBulkUI() {
+        window.updateBulkUI = function() {
             const checked = document.querySelectorAll('.shop-check:checked');
             const btn = document.getElementById('bulkDelBtn');
             const count = document.getElementById('selectedCount');
@@ -286,72 +316,87 @@
             }
         }
 
-        // 🟢 แก้ไขให้ข้อมูลเปลี่ยนทันทีบนหน้าจอ และแจ้งเตือน
-        async function addShop() {
+        window.addShop = async function() {
             const name = document.getElementById('newShop').value.trim();
             const owner = document.getElementById('newOwner').value.trim();
             const addr = document.getElementById('newAddr').value.trim();
-            const status = document.getElementById('newStatus').value;
+            const status = document.getElementById('newStatus').value; 
             
-            if(!name || !owner) return alert("กรุณากรอกข้อมูลให้ครบ");
+            if(!name || !owner) return alert("กรุณากรอกข้อมูลชื่อร้านและชื่อผู้รับให้ครบถ้วน");
 
-            // แอบอัปเดตหน้าจอทันที
-            db.push({ name: String(name), owner: String(owner), addr: String(addr), status: String(status) });
-            render();
-            
             document.getElementById('addBtn').disabled = true;
             document.getElementById('loading').classList.remove('hidden');
 
             try {
-                await fetch(SHEET_API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({name, owner, addr, status, action: "add"}) });
-                document.getElementById('newShop').value = ''; document.getElementById('newOwner').value = ''; document.getElementById('newAddr').value = '';
+                await addDoc(collection(db, "address_mom_baby"), {
+                    Name: name,
+                    Owner: owner,
+                    Address: addr,
+                    Status: status,
+                    timestamp: serverTimestamp() 
+                });
+
+                document.getElementById('newShop').value = ''; 
+                document.getElementById('newOwner').value = ''; 
+                document.getElementById('newAddr').value = '';
                 alert("เพิ่มข้อมูลร้านค้าสำเร็จ! ☁️");
-            } catch (e) { console.log(e); } 
-            finally { document.getElementById('addBtn').disabled = false; document.getElementById('loading').classList.add('hidden'); }
+            } catch (e) { 
+                console.log(e); 
+                alert("ไม่สามารถเพิ่มข้อมูลได้ กรุณาลองใหม่");
+            } 
+            finally { 
+                document.getElementById('addBtn').disabled = false; 
+                document.getElementById('loading').classList.add('hidden'); 
+            }
         }
 
-        async function updateStatus(name, newStatus) {
-            const index = db.findIndex(s => String(s.name) === String(name));
-            if (index === -1) return;
-            
-            db[index].status = newStatus; 
-            render(); 
-
+        window.updateStatus = async function(id, newStatus) {
             document.getElementById('loading').classList.remove('hidden');
             try {
-                await fetch(SHEET_API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ name: db[index].name, owner: db[index].owner, addr: db[index].addr, status: newStatus, action: "add" }) });
-            } catch (e) { console.log(e); }
+                await updateDoc(doc(db, "address_mom_baby", id), {
+                    Status: newStatus
+                });
+            } catch (e) { 
+                console.log(e); 
+                alert("ไม่สามารถอัปเดตสถานะได้");
+            }
             document.getElementById('loading').classList.add('hidden');
         }
 
-        async function deleteShop(name) {
+        window.deleteShop = async function(id, name) {
             if(!confirm(`ยืนยันการลบร้าน "${name}"?`)) return;
             
-            db = db.filter(s => String(s.name) !== String(name)); 
-            render(); 
-
             document.getElementById('loading').classList.remove('hidden');
             try { 
-                await fetch(SHEET_API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({name: name, action: "delete"}) }); 
+                await deleteDoc(doc(db, "address_mom_baby", id)); 
                 alert("ลบข้อมูลสำเร็จ! 🗑️");
-            } catch (e) { console.log(e); }
+            } catch (e) { 
+                console.log(e); 
+                alert("ไม่สามารถลบข้อมูลได้");
+            }
             document.getElementById('loading').classList.add('hidden');
+            document.getElementById('selectAll').checked = false;
         }
 
-        async function bulkDelete() {
+        window.bulkDelete = async function() {
             const checked = document.querySelectorAll('.shop-check:checked');
-            const names = Array.from(checked).map(ck => String(ck.value));
-            if(!confirm(`ยืนยันการลบ ${names.length} รายการที่เลือก?`)) return;
-
-            db = db.filter(s => !names.includes(String(s.name))); 
-            render(); 
+            if(!confirm(`ยืนยันการลบ ${checked.length} รายการที่เลือก?`)) return;
 
             document.getElementById('loading').classList.remove('hidden');
             try {
-                await fetch(SHEET_API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ names: names, action: "bulkDelete" }) });
-                alert(`ลบ ${names.length} รายการสำเร็จ! 🗑️`);
-            } catch (e) { console.log(e); } 
-            finally { document.getElementById('loading').classList.add('hidden'); }
+                for(let box of checked) {
+                    await deleteDoc(doc(db, "address_mom_baby", box.value));
+                }
+                alert(`ลบ ${checked.length} รายการสำเร็จ! 🗑️`);
+            } catch (e) { 
+                console.log(e); 
+                alert("ระบบลบข้อมูลบางส่วนไม่สำเร็จ");
+            } 
+            finally { 
+                document.getElementById('loading').classList.add('hidden'); 
+                document.getElementById('selectAll').checked = false;
+                window.updateBulkUI();
+            }
         }
     </script>
 </body>
